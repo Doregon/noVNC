@@ -32,6 +32,7 @@ import RREDecoder from "./decoders/rre.js";
 import HextileDecoder from "./decoders/hextile.js";
 import TightDecoder from "./decoders/tight.js";
 import TightPNGDecoder from "./decoders/tightpng.js";
+import '../vendor/forge.js'
 
 // How many seconds to wait for a disconnect to finish
 const DISCONNECT_TIMEOUT = 3;
@@ -1242,13 +1243,11 @@ export default class RFB extends EventTargetMixin {
                 break;
             case "003.003":
             case "003.006":  // UltraVNC
-            case "003.889":  // Apple Remote Desktop
-                this._rfbVersion = 3.3;
-                break;
             case "003.007":
                 this._rfbVersion = 3.7;
                 break;
             case "003.008":
+            case "003.889":  // Apple Remote Desktop
             case "004.000":  // Intel AMT KVM
             case "004.001":  // RealVNC 4.6
             case "005.000":  // RealVNC 5.3
@@ -1304,6 +1303,8 @@ export default class RFB extends EventTargetMixin {
                 this._rfbAuthScheme = 16; // Tight
             } else if (types.includes(2)) {
                 this._rfbAuthScheme = 2; // VNC Auth
+            } else if (types.includes(30)) {
+                this._rfbAuthScheme = 30; // ARD Auth
             } else if (types.includes(19)) {
                 this._rfbAuthScheme = 19; // VeNCrypt Auth
             } else {
@@ -1496,6 +1497,77 @@ export default class RFB extends EventTargetMixin {
         return true;
     }
 
+    _negotiateARDAuth() {
+
+        if (this._rfbCredentials.username === undefined ||
+            this._rfbCredentials.password === undefined) {
+            this.dispatchEvent(new CustomEvent(
+                "credentialsrequired",
+                { detail: { types: ["username", "password"] } }));
+            return false;
+        }
+
+        if (this._sock.rQwait("read generator", 2)) { return false; }
+        var gen = this._sock.rQshiftBytes(2)   // DH base generator value
+
+        if (this._sock.rQwait("read len", 2)) { return false; }
+        var len = this._sock.rQshift16()
+
+        if (this._sock.rQwait("read mod", len)) { return false; }
+        var prime = this._sock.rQshiftBytes(len)  // predetermined prime modulus
+
+        if (this._sock.rQwait("read pub", len)) { return false; }
+        var peerKey = this._sock.rQshiftBytes(len) // other party's public key
+
+        var prime= new forge.jsbn.BigInteger(forge.util.createBuffer(prime).toHex(), 16);
+
+        var client_priv_key=new forge.jsbn.BigInteger(forge.util.createBuffer(forge.random.generate(len)).toHex(), 16);;
+
+        var ghd= new forge.jsbn.BigInteger(gen);
+        var client_pub_key=ghd.modPow(client_priv_key,prime);
+
+        var server_pub_key= new forge.jsbn.BigInteger(forge.util.createBuffer(peerKey).toHex(), 16);
+
+        var shared_key=server_pub_key.modPow(client_priv_key,prime);
+
+        var md5_shared = forge.md.md5.create().update(forge.util.hexToBytes(shared_key.toString(16))).digest();
+               
+        var strCreds = 
+            this._rfbCredentials.username + '\0'
+            + forge.util.createBuffer(forge.random.generate(32)).toHex().substring(0, 63-this._rfbCredentials.username.length) +
+            this._rfbCredentials.password + '\0'
+            + forge.util.createBuffer(forge.random.generate(32)).toHex().substring(0, 63-this._rfbCredentials.password.length);
+
+        var packed_userpass = forge.util.encodeUtf8(strCreds);
+
+        var cipher = forge.cipher.createCipher('AES-ECB', md5_shared);
+
+        cipher.mode.pad = false;
+        cipher.start();
+        cipher.update(forge.util.createBuffer(packed_userpass))
+        cipher.finish();
+
+        var stringToAsciiByteArray = function(str) {
+            var bytes = [];
+            for (var i = 0; i < str.length; ++i) {
+               var charCode = str.charCodeAt(i);
+               bytes.push(charCode);
+            }
+            return bytes;
+        }
+        var data =  stringToAsciiByteArray(cipher.output.data); 
+        this._sock.send(data);
+
+        var pub_bytes = client_pub_key.toByteArray();
+        if (pub_bytes.length==129) {
+            pub_bytes = pub_bytes.slice(1);
+        }
+        this._sock.send(pub_bytes);
+
+        this._rfbInitState = "SecurityResult";
+        return true;
+    }
+
     _negotiateTightUnixAuth() {
         if (this._rfbCredentials.username === undefined ||
             this._rfbCredentials.password === undefined) {
@@ -1631,6 +1703,9 @@ export default class RFB extends EventTargetMixin {
 
             case 22:  // XVP auth
                 return this._negotiateXvpAuth();
+
+            case 30:  // ARD auth
+                return this._negotiateARDAuth();
 
             case 2:  // VNC authentication
                 return this._negotiateStdVNCAuth();
