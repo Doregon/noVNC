@@ -220,7 +220,7 @@ export default class RFB extends EventTargetMixin {
         this._decoders[encodings.encodingTight] = new TightDecoder();
         this._decoders[encodings.encodingTightPNG] = new TightPNGDecoder();
         this._decoders[encodings.encodingZRLE] = new ZRLEDecoder();
-        
+
         // NB: nothing that needs explicit teardown should be done
         // before this point, since this can throw an exception
         try {

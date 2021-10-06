@@ -36,14 +36,14 @@ export default class ZRLEDecoder {
 
         const data = sock.rQshiftBytes(this._length);
 
-        const tiles_x = Math.ceil(width / ZRLE_TILE_WIDTH);
-        const tiles_y = Math.ceil(height / ZRLE_TILE_HEIGHT);
-        const total_tiles = tiles_x * tiles_y;
+        const tilesX = Math.ceil(width / ZRLE_TILE_WIDTH);
+        const tilesY = Math.ceil(height / ZRLE_TILE_HEIGHT);
+        const totalTiles = tilesX * tilesY;
 
 
         this._inflator.setInput(data);
 
-        this._uncompressed = this._inflator.inflate(width * height * 3 + total_tiles, true);
+        this._uncompressed = this._inflator.inflate(width * height * 3 + totalTiles, true);
 
         for (let ty = y; ty < y + height; ty += ZRLE_TILE_HEIGHT) {
             let th = Math.min(ZRLE_TILE_HEIGHT, y + height - ty);
@@ -99,14 +99,14 @@ export default class ZRLEDecoder {
         this._offset += size;
 
         // add the alpha channel
-        var data2 = new Uint8Array(pixels*4);
+        let data2 = new Uint8Array(pixels*4);
         for (let i = 0, j = 0; i < data2.length; i += 4, j += 3) {
             data2[i]     = data[j];
             data2[i + 1] = data[j + 1];
             data2[i + 2] = data[j + 2];
             data2[i + 3] = 255;  // Alpha
         }
-        return data2
+        return data2;
     }
 
     _decodePaletteTile(paletteSize, tileSize, tilew, tileh) {
@@ -116,9 +116,9 @@ export default class ZRLEDecoder {
         const mask = (1 << bitsPerPixel) - 1;
 
         let offset = 0;
-        for(var y=0; y<tileh; y++) {
-            var shift = 8-bitsPerPixel;
-            for(var x=0; x<tilew; x++) {
+        for (let y=0; y<tileh; y++) {
+            let shift = 8-bitsPerPixel;
+            for (let x=0; x<tilew; x++) {
                 let encoded = this._uncompressed[this._offset];
                 let indexInPalette = (encoded>>shift) & mask;
 
@@ -129,12 +129,12 @@ export default class ZRLEDecoder {
                 offset += 4;
 
                 shift-=bitsPerPixel;
-                if(shift<0) {
+                if (shift<0) {
                     shift=8-bitsPerPixel;
                     this._offset++;
                 }
             }
-            if(shift<8-bitsPerPixel) {
+            if (shift<8-bitsPerPixel) {
                 this._offset++;
             }
         }
