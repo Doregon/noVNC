@@ -32,7 +32,7 @@ import RREDecoder from "./decoders/rre.js";
 import HextileDecoder from "./decoders/hextile.js";
 import TightDecoder from "./decoders/tight.js";
 import TightPNGDecoder from "./decoders/tightpng.js";
-import '../vendor/forge.js'
+import forge from '../vendor/forge.js';
 
 // How many seconds to wait for a disconnect to finish
 const DISCONNECT_TIMEOUT = 3;
@@ -1497,6 +1497,14 @@ export default class RFB extends EventTargetMixin {
         return true;
     }
 
+    _stringToAsciiByteArray(str) {
+        let bytes = Uint8Array(str.length);
+        for (let i = 0; i < str.length; ++i) {
+            bytes[i] = str.charCodeAt(i);
+        }
+        return bytes;
+    }
+
     _negotiateARDAuth() {
 
         if (this._rfbCredentials.username === undefined ||
@@ -1508,61 +1516,52 @@ export default class RFB extends EventTargetMixin {
         }
 
         if (this._sock.rQwait("read generator", 2)) { return false; }
-        var gen = this._sock.rQshiftBytes(2)   // DH base generator value
+        let generator = this._sock.rQshiftBytes(2);   // DH base generator value
 
         if (this._sock.rQwait("read len", 2)) { return false; }
-        var len = this._sock.rQshift16()
+        let keyLength = this._sock.rQshift16();
 
-        if (this._sock.rQwait("read mod", len)) { return false; }
-        var prime = this._sock.rQshiftBytes(len)  // predetermined prime modulus
+        if (this._sock.rQwait("read mod", keyLength)) { return false; }
+        let primeBytes = this._sock.rQshiftBytes(keyLength);  // predetermined prime modulus
 
-        if (this._sock.rQwait("read pub", len)) { return false; }
-        var peerKey = this._sock.rQshiftBytes(len) // other party's public key
+        if (this._sock.rQwait("read pub", keyLength)) { return false; }
+        let peerKey = this._sock.rQshiftBytes(keyLength); // other party's public key
 
-        var prime= new forge.jsbn.BigInteger(forge.util.createBuffer(prime).toHex(), 16);
+        let prime = new forge.jsbn.BigInteger(forge.util.createBuffer(primeBytes).toHex(), 16);
 
-        var client_priv_key=new forge.jsbn.BigInteger(forge.util.createBuffer(forge.random.generate(len)).toHex(), 16);;
+        let clientPrivKey = new forge.jsbn.BigInteger(forge.util.createBuffer(forge.random.generate(keyLength)).toHex(), 16);
 
-        var ghd= new forge.jsbn.BigInteger(gen);
-        var client_pub_key=ghd.modPow(client_priv_key,prime);
+        let ghd = new forge.jsbn.BigInteger(generator);
+        let clientPubKey = ghd.modPow(clientPrivKey, prime);
 
-        var server_pub_key= new forge.jsbn.BigInteger(forge.util.createBuffer(peerKey).toHex(), 16);
+        let serverPubKey = new forge.jsbn.BigInteger(forge.util.createBuffer(peerKey).toHex(), 16);
 
-        var shared_key=server_pub_key.modPow(client_priv_key,prime);
+        let sharedKey = serverPubKey.modPow(clientPrivKey, prime);
 
-        var md5_shared = forge.md.md5.create().update(forge.util.hexToBytes(shared_key.toString(16))).digest();
-               
-        var strCreds = 
-            this._rfbCredentials.username + '\0'
-            + forge.util.createBuffer(forge.random.generate(32)).toHex().substring(0, 63-this._rfbCredentials.username.length) +
-            this._rfbCredentials.password + '\0'
-            + forge.util.createBuffer(forge.random.generate(32)).toHex().substring(0, 63-this._rfbCredentials.password.length);
+        let md5Shared = forge.md.md5.create().update(forge.util.hexToBytes(sharedKey.toString(16))).digest();
 
-        var packed_userpass = forge.util.encodeUtf8(strCreds);
+        let userPassword = this._rfbCredentials.username + '\0'
+                + forge.util.createBuffer(forge.random.generate(32)).toHex().substring(0, 63-this._rfbCredentials.username.length) +
+                this._rfbCredentials.password + '\0'
+                + forge.util.createBuffer(forge.random.generate(32)).toHex().substring(0, 63-this._rfbCredentials.password.length);
 
-        var cipher = forge.cipher.createCipher('AES-ECB', md5_shared);
+        let packedUserPassword = forge.util.encodeUtf8(userPassword);
+
+        let cipher = forge.cipher.createCipher('AES-ECB', md5Shared);
 
         cipher.mode.pad = false;
         cipher.start();
-        cipher.update(forge.util.createBuffer(packed_userpass))
+        cipher.update(forge.util.createBuffer(packedUserPassword));
         cipher.finish();
 
-        var stringToAsciiByteArray = function(str) {
-            var bytes = [];
-            for (var i = 0; i < str.length; ++i) {
-               var charCode = str.charCodeAt(i);
-               bytes.push(charCode);
-            }
-            return bytes;
-        }
-        var data =  stringToAsciiByteArray(cipher.output.data); 
+        let data = this._stringToAsciiByteArray(cipher.output.data);
         this._sock.send(data);
 
-        var pub_bytes = client_pub_key.toByteArray();
-        if (pub_bytes.length==129) {
-            pub_bytes = pub_bytes.slice(1);
+        let pubBytes = clientPubKey.toByteArray();
+        if (pubBytes.length==129) {
+            pubBytes = pubBytes.slice(1);
         }
-        this._sock.send(pub_bytes);
+        this._sock.send(pubBytes);
 
         this._rfbInitState = "SecurityResult";
         return true;

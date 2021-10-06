@@ -29590,3 +29590,4 @@ forge.task.createCondition = function() {
 /***/ })
 /******/ ]);
 });
+export default forge;
