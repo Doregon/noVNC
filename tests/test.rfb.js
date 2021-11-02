@@ -1170,6 +1170,56 @@ describe('Remote Frame Buffer Protocol Client', function () {
                 });
             });
 
+            describe('ARD Authentication (type 30) Handler', function () {
+
+                beforeEach(function () {
+                    client._rfbInitState = 'Security';
+                    client._rfbVersion = 3.8;
+                });
+
+                it('should fire the credentialsrequired event if all credentials are missing', function () {
+                    const spy = sinon.spy();
+                    client.addEventListener("credentialsrequired", spy);
+                    client._rfbCredentials = {};
+                    sendSecurity(30, client);
+
+                    expect(client._rfbCredentials).to.be.empty;
+                    expect(spy).to.have.been.calledOnce;
+                    expect(spy.args[0][0].detail.types).to.have.members(["username", "password"]);
+                });
+
+                it('should fire the credentialsrequired event if some credentials are missing', function () {
+                    const spy = sinon.spy();
+                    client.addEventListener("credentialsrequired", spy);
+                    client._rfbCredentials = { password: 'password'};
+                    sendSecurity(30, client);
+
+                    expect(spy).to.have.been.calledOnce;
+                    expect(spy.args[0][0].detail.types).to.have.members(["username", "password"]);
+                });
+
+                it('should transition to SecurityResult after sending the user and password', function () {
+                    client._rfbCredentials = { username: 'user',
+                                               password: 'password' };
+                    sendSecurity(30, client);
+
+                    // 2 bytes generator
+                    // 2 bytes keylength
+                    // prime number of keylength bytes
+                    // public key of keylength bytes
+                    const challenge = [127, 252, 0, 16];
+                    // prime & pubkey
+                    for (let i = 0; i < 32; i++) {
+                        challenge[i+4] = i;
+                    }
+                    client._sock._websocket._receiveData(new Uint8Array(challenge));
+
+                    expect(client._rfbInitState).to.equal('SecurityResult');
+
+                });
+
+            });
+
             describe('XVP Authentication (type 22) Handler', function () {
                 beforeEach(function () {
                     client._rfbInitState = 'Security';

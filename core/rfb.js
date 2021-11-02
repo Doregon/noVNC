@@ -1498,7 +1498,7 @@ export default class RFB extends EventTargetMixin {
     }
 
     _stringToAsciiByteArray(str) {
-        let bytes = Uint8Array(str.length);
+        let bytes = new Uint8Array(str.length);
         for (let i = 0; i < str.length; ++i) {
             bytes[i] = str.charCodeAt(i);
         }
@@ -1515,17 +1515,17 @@ export default class RFB extends EventTargetMixin {
             return false;
         }
 
-        if (this._sock.rQwait("read generator", 2)) { return false; }
+        if (this._sock.rQwait("read ard", 4)) { return false; }
+
         let generator = this._sock.rQshiftBytes(2);   // DH base generator value
 
-        if (this._sock.rQwait("read len", 2)) { return false; }
         let keyLength = this._sock.rQshift16();
 
-        if (this._sock.rQwait("read mod", keyLength)) { return false; }
+        if (this._sock.rQwait("read ard keylength", keyLength*2, 4)) { return false; }
+
         let primeBytes = this._sock.rQshiftBytes(keyLength);  // predetermined prime modulus
 
-        if (this._sock.rQwait("read pub", keyLength)) { return false; }
-        let peerKey = this._sock.rQshiftBytes(keyLength); // other party's public key
+        let serverPubKeyBytes = this._sock.rQshiftBytes(keyLength); // other party's public key
 
         let prime = new forge.jsbn.BigInteger(forge.util.createBuffer(primeBytes).toHex(), 16);
 
@@ -1534,7 +1534,7 @@ export default class RFB extends EventTargetMixin {
         let ghd = new forge.jsbn.BigInteger(generator);
         let clientPubKey = ghd.modPow(clientPrivKey, prime);
 
-        let serverPubKey = new forge.jsbn.BigInteger(forge.util.createBuffer(peerKey).toHex(), 16);
+        let serverPubKey = new forge.jsbn.BigInteger(forge.util.createBuffer(serverPubKeyBytes).toHex(), 16);
 
         let sharedKey = serverPubKey.modPow(clientPrivKey, prime);
 
