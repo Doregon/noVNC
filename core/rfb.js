@@ -1243,6 +1243,8 @@ export default class RFB extends EventTargetMixin {
                 break;
             case "003.003":
             case "003.006":  // UltraVNC
+                this._rfbVersion = 3.3;
+                break;
             case "003.007":
                 this._rfbVersion = 3.7;
                 break;
