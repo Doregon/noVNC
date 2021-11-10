@@ -1542,10 +1542,13 @@ export default class RFB extends EventTargetMixin {
 
         let md5Shared = forge.md.md5.create().update(forge.util.hexToBytes(sharedKey.toString(16))).digest();
 
-        let userPassword = this._rfbCredentials.username + '\0'
-                + forge.util.createBuffer(forge.random.generate(32)).toHex().substring(0, 63-this._rfbCredentials.username.length) +
-                this._rfbCredentials.password + '\0'
-                + forge.util.createBuffer(forge.random.generate(32)).toHex().substring(0, 63-this._rfbCredentials.password.length);
+        let username = this._rfbCredentials.username.substring(0, 63);
+        let password = this._rfbCredentials.password.substring(0, 63);
+
+        let paddedUsername = username + '\0' + forge.util.createBuffer(forge.random.generate(34)).toHex().substring(0, 63);
+        let paddedPassword = password + '\0' + forge.util.createBuffer(forge.random.generate(34)).toHex().substring(0, 63);
+
+        let userPassword = paddedUsername.substring(0, 64) + paddedPassword.substring(0, 64);
 
         let packedUserPassword = forge.util.encodeUtf8(userPassword);
 
@@ -1560,9 +1563,7 @@ export default class RFB extends EventTargetMixin {
         this._sock.send(data);
 
         let pubBytes = clientPubKey.toByteArray();
-        if (pubBytes.length==129) {
-            pubBytes = pubBytes.slice(1);
-        }
+        pubBytes = pubBytes.slice(pubBytes.length-128);  // key must be 128 bytes, remove sign byte
         this._sock.send(pubBytes);
 
         this._rfbInitState = "SecurityResult";
