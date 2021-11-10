@@ -1542,28 +1542,26 @@ export default class RFB extends EventTargetMixin {
 
         let md5Shared = forge.md.md5.create().update(forge.util.hexToBytes(sharedKey.toString(16))).digest();
 
-        let username = this._rfbCredentials.username.substring(0, 63);
-        let password = this._rfbCredentials.password.substring(0, 63);
+        let username = forge.util.encodeUtf8(this._rfbCredentials.username).substring(0, 63);
+        let password = forge.util.encodeUtf8(this._rfbCredentials.password).substring(0, 63);
 
         let paddedUsername = username + '\0' + forge.util.createBuffer(forge.random.generate(34)).toHex().substring(0, 63);
         let paddedPassword = password + '\0' + forge.util.createBuffer(forge.random.generate(34)).toHex().substring(0, 63);
 
         let userPassword = paddedUsername.substring(0, 64) + paddedPassword.substring(0, 64);
 
-        let packedUserPassword = forge.util.encodeUtf8(userPassword);
-
         let cipher = forge.cipher.createCipher('AES-ECB', md5Shared);
 
         cipher.mode.pad = false;
         cipher.start();
-        cipher.update(forge.util.createBuffer(packedUserPassword));
+        cipher.update(forge.util.createBuffer(userPassword));
         cipher.finish();
 
         let data = this._stringToAsciiByteArray(cipher.output.data);
         this._sock.send(data);
 
         let pubBytes = clientPubKey.toByteArray();
-        pubBytes = pubBytes.slice(pubBytes.length-128);  // key must be 128 bytes, remove sign byte
+        pubBytes = pubBytes.slice(pubBytes.length-keyLength);  // key must be keyLength bytes, remove sign byte
         this._sock.send(pubBytes);
 
         this._rfbInitState = "SecurityResult";
