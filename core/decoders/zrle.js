@@ -15,7 +15,6 @@ const ZRLE_TILE_HEIGHT = 64;
 export default class ZRLEDecoder {
     constructor() {
         this._length = 0;
-        this._offset = 0;
         this._inflator = new Inflate();
 
         this._pixelBuffer = new Uint8Array(ZRLE_TILE_WIDTH * ZRLE_TILE_HEIGHT * 4);
@@ -23,7 +22,6 @@ export default class ZRLEDecoder {
     }
 
     decodeRect(x, y, width, height, sock, display, depth) {
-
         if (this._length === 0) {
             if (sock.rQwait("ZLib data length", 4)) {
                 return false;
@@ -38,8 +36,6 @@ export default class ZRLEDecoder {
 
         this._inflator.setInput(data);
 
-        this._readBuffer = this._inflator.inflate(width * height * 3 + 1024, true);
-
         for (let ty = y; ty < y + height; ty += ZRLE_TILE_HEIGHT) {
             let th = Math.min(ZRLE_TILE_HEIGHT, y + height - ty);
 
@@ -47,7 +43,7 @@ export default class ZRLEDecoder {
                 let tw = Math.min(ZRLE_TILE_WIDTH, x + width - tx);
 
                 const tileSize = tw * th;
-                const subencoding = this._readBuffer[this._offset++];
+                const subencoding = this._inflator.inflate(1)[0];
                 if (subencoding === 0) {
                     // raw data
                     const data = this._readPixels(tileSize);
@@ -70,9 +66,7 @@ export default class ZRLEDecoder {
                 }
             }
         }
-        this._readBuffer = null;
         this._length = 0;
-        this._offset = 0;
         return true;
     }
 
@@ -88,13 +82,13 @@ export default class ZRLEDecoder {
 
     _readPixels(pixels) {
         let data = this._pixelBuffer;
+        const buffer = this._inflator.inflate(3*pixels);
         for (let i = 0, j = 0; i < pixels*4; i += 4, j += 3) {
-            data[i]     = this._readBuffer[this._offset + j];
-            data[i + 1] = this._readBuffer[this._offset + j + 1];
-            data[i + 2] = this._readBuffer[this._offset + j + 2];
+            data[i]     = buffer[j];
+            data[i + 1] = buffer[j + 1];
+            data[i + 2] = buffer[j + 2];
             data[i + 3] = 255;  // Add the Alpha
         }
-        this._offset += pixels * 3;
         return data;
     }
 
@@ -105,10 +99,13 @@ export default class ZRLEDecoder {
         const mask = (1 << bitsPerPixel) - 1;
 
         let offset = 0;
+        let encoded = null;
         for (let y=0; y<tileh; y++) {
             let shift = 8-bitsPerPixel;
             for (let x=0; x<tilew; x++) {
-                let encoded = this._readBuffer[this._offset];
+                if (encoded == null) {
+                    encoded = this._inflator.inflate(1)[0];
+                }
                 let indexInPalette = (encoded>>shift) & mask;
 
                 data[offset] = palette[indexInPalette * 4];
@@ -120,11 +117,11 @@ export default class ZRLEDecoder {
                 shift-=bitsPerPixel;
                 if (shift<0) {
                     shift=8-bitsPerPixel;
-                    this._offset++;
+                    encoded = null;
                 }
             }
             if (shift<8-bitsPerPixel) {
-                this._offset++;
+                encoded = null;
             }
         }
         return data;
@@ -155,7 +152,7 @@ export default class ZRLEDecoder {
 
         let offset = 0;
         while (offset < tileSize) {
-            let indexInPalette = this._readBuffer[this._offset++];
+            let indexInPalette = this._inflator.inflate(1)[0];
             let length = 1;
             if (indexInPalette >= 128) {
                 indexInPalette -= 128;
@@ -183,7 +180,7 @@ export default class ZRLEDecoder {
         let length = 0;
         let current = 0;
         do {
-            current = this._readBuffer[this._offset++];
+            current = this._inflator.inflate(1)[0];
             length += current;
         } while (current === 255);
         return length + 1;

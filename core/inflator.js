@@ -34,7 +34,7 @@ export default class Inflate {
         }
     }
 
-    inflate(expected, allowIncomplete) {
+    inflate(expected) {
         // resize our output buffer if it's too small
         // (we could just use multiple chunks, but that would cause an extra
         // allocation each time to flatten the chunks)
@@ -54,9 +54,7 @@ export default class Inflate {
         }
 
         if (this.strm.next_out != expected) {
-            if (allowIncomplete == null || allowIncomplete === false) {
-                throw new Error("Incomplete zlib block");
-            }
+            throw new Error("Incomplete zlib block");
         }
 
         return new Uint8Array(this.strm.output.buffer, 0, this.strm.next_out);
