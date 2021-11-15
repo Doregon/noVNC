@@ -99,11 +99,13 @@ export default class ZRLEDecoder {
         const mask = (1 << bitsPerPixel) - 1;
 
         let offset = 0;
-        let encoded = null;
+        let encoded = this._inflator.inflate(1)[0];
+
         for (let y=0; y<tileh; y++) {
             let shift = 8-bitsPerPixel;
             for (let x=0; x<tilew; x++) {
-                if (encoded == null) {
+                if (shift<0) {
+                    shift=8-bitsPerPixel;
                     encoded = this._inflator.inflate(1)[0];
                 }
                 let indexInPalette = (encoded>>shift) & mask;
@@ -113,15 +115,10 @@ export default class ZRLEDecoder {
                 data[offset + 2] = palette[indexInPalette * 4 + 2];
                 data[offset + 3] = palette[indexInPalette * 4 + 3];
                 offset += 4;
-
                 shift-=bitsPerPixel;
-                if (shift<0) {
-                    shift=8-bitsPerPixel;
-                    encoded = null;
-                }
             }
-            if (shift<8-bitsPerPixel) {
-                encoded = null;
+            if (shift<8-bitsPerPixel && y<tileh-1) {
+                encoded =  this._inflator.inflate(1)[0];
             }
         }
         return data;
